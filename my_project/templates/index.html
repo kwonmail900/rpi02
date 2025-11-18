@@ -1,0 +1,89 @@
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Real-Time Sensor Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: sans-serif; background-color: #f4f4f9; }
+        .main-container { display: flex; flex-direction: column; align-items: center; gap: 40px; padding: 20px; }
+        .chart-container { width: 80%; max-width: 900px; background-color: white; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); padding: 20px; }
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <!-- 기존 차트들 -->
+        <div class="chart-container"><canvas id="chartCombined"></canvas></div>
+        <div class="chart-container"><canvas id="chartSimulator"></canvas></div>
+        <div class="chart-container"><canvas id="chartCds"></canvas></div>
+
+        <!-- AI 분석 차트 추가 -->
+        <div class="chart-container">
+            <canvas id="chartTrendAnalysis"></canvas>
+        </div>
+    </div>
+
+    <script>
+        // --- 모든 차트 인스턴스 초기화 ---
+        const createChart = (ctx, title, datasets) => {
+            return new Chart(ctx, {
+                type: 'line',
+                data: { labels: [], datasets: datasets },
+                options: { plugins: { title: { display: true, text: title, font: { size: 18 }}}}
+            });
+        };
+
+        const chartCombined = createChart(document.getElementById('chartCombined').getContext('2d'), 'Combined Sensor Data', [
+            { label: 'random_simulator', borderColor: 'rgb(255, 99, 132)', tension: 0.1 },
+            { label: 'esp32/cds', borderColor: 'rgb(54, 162, 235)', tension: 0.1 }
+        ]);
+        const chartSimulator = createChart(document.getElementById('chartSimulator').getContext('2d'), 'Random Simulator (Raw)', [
+            { label: 'random_simulator', borderColor: 'rgb(255, 99, 132)', tension: 0.1 }
+        ]);
+        const chartCds = createChart(document.getElementById('chartCds').getContext('2d'), 'ESP32 CDS (Raw)', [
+            { label: 'esp32/cds', borderColor: 'rgb(54, 162, 235)', tension: 0.1 }
+        ]);
+        // AI 분석 차트
+        const chartTrendAnalysis = createChart(document.getElementById('chartTrendAnalysis').getContext('2d'), 'AI Trend Analysis (5-Point Moving Average)', [
+            { label: 'Simulator Trend (SMA)', borderColor: 'rgb(255, 99, 132)', borderWidth: 3, tension: 0.2 },
+            { label: 'CDS Trend (SMA)', borderColor: 'rgb(54, 162, 235)', borderWidth: 3, tension: 0.2 }
+        ]);
+
+        // --- 데이터 업데이트 로직 ---
+        async function updateAllCharts() {
+            try {
+                const response = await fetch('/data');
+                const sensorData = await response.json();
+
+                // 센서별 데이터 추출 (raw 및 sma)
+                const sim = sensorData['random_simulator'] || { raw: [], sma: [] };
+                const cds = sensorData['esp32/cds'] || { raw: [], sma: [] };
+
+                // 함수로 차트 업데이트 로직 분리
+                const updateChartData = (chart, datasets) => {
+                    datasets.forEach((data, index) => {
+                        chart.data.datasets[index].data = data;
+                    });
+                    const maxLen = Math.max(...datasets.map(d => d.length));
+                    chart.data.labels = Array.from({length: maxLen}, (_, i) => i + 1);
+                    chart.update();
+                };
+
+                // 각 차트 업데이트
+                updateChartData(chartCombined, [sim.raw, cds.raw]);
+                updateChartData(chartSimulator, [sim.raw]);
+                updateChartData(chartCds, [cds.raw]);
+                updateChartData(chartTrendAnalysis, [sim.sma, cds.sma]);
+
+            } catch (error) {
+                console.error("Error fetching or updating chart data:", error);
+            }
+        }
+
+        // --- 업데이트 시작 ---
+        updateAllCharts();
+        setInterval(updateAllCharts, 2000);
+    </script>
+</body>
+</html>
+
